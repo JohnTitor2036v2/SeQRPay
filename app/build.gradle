@@ -1,0 +1,58 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdkVersion 33
+    defaultConfig {
+        applicationId "com.example.seqrpay"
+        minSdkVersion 21
+        targetSdkVersion 33
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    // AndroidX Core Libraries
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core-ktx:1.10.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // Material Design Components
+    implementation 'com.google.android.material:material:1.9.0'
+
+    // QR Code scanner by Budiyev
+    implementation 'com.github.yuriy-budiyev:code-scanner:2.3.2'
+
+    // ZXing for barcode processing
+    implementation 'com.google.zxing:core:3.5.1'
+
+    // RecyclerView for list display
+    implementation 'androidx.recyclerview:recyclerview:1.3.0'
+
+    // SQLite support (included in Android SDK, but these are helper libraries)
+    implementation 'androidx.sqlite:sqlite:2.3.1'
+
+    // OkHttp for networking
+    implementation 'com.squareup.okhttp3:okhttp:4.10.0'
+
+    // For JSON parsing
+    implementation 'org.json:json:20230227'
+
+    // Testing libraries
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}

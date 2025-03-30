@@ -2,6 +2,17 @@ plugins {
     id 'com.android.application'
 }
 
+// Function to read properties from local.properties
+def getApiKey(String propertyName) {
+    Properties properties = new Properties()
+    File localPropsFile = project.rootProject.file('local.properties')
+    if (localPropsFile.exists()) {
+        properties.load(new FileInputStream(localPropsFile))
+        return properties.getProperty(propertyName, "") // Return empty string if not found
+    }
+    return "" // Return empty string if file doesn't exist
+}
+
 android {
     namespace 'com.example.seqrpay'  // Add this line
     compileSdkVersion 34
@@ -12,6 +23,8 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Read API key from local.properties and make it available in BuildConfig
+        buildConfigField("String", "VIRUSTOTAL_API_KEY", "\"${getApiKey('VIRUSTOTAL_API_KEY')}\"")
     }
     // Rest of your android block remains the same
     buildTypes {

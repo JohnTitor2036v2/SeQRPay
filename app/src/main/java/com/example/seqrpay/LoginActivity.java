@@ -35,8 +35,10 @@ public class LoginActivity extends AppCompatActivity {
                     return;
                 }
 
-                // Check login credentials
-                if (dbHelper.checkUser(username, SecurityUtils.hashPassword(password))) {
+                // --- MODIFIED: Pass raw password to checkUser ---
+                // if (dbHelper.checkUser(username, SecurityUtils.hashPassword(password))) { // Old way
+                if (dbHelper.checkUser(username, password)) { // New way (checkUser handles hashing internally)
+                    // Consider storing username or user ID in SharedPreferences for session management
                     startActivity(new Intent(LoginActivity.this, DashboardActivity.class));
                     finish();
                 } else {

@@ -37,22 +37,26 @@ public class RegisterActivity extends AppCompatActivity {
                     return;
                 }
 
+                // Add password complexity rules here if desired
+
                 if (!password.equals(confirmPassword)) {
                     Toast.makeText(RegisterActivity.this, "Passwords do not match", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
-                // Hash the password before storing
-                String hashedPassword = SecurityUtils.hashPassword(password);
+                // --- MODIFIED: Pass raw password to addUser ---
+                // String hashedPassword = SecurityUtils.hashPassword(password); // Old way
+                long result = dbHelper.addUser(username, password); // New way
 
-                // Add user to database
-                long result = dbHelper.addUser(username, hashedPassword);
                 if (result > 0) {
                     Toast.makeText(RegisterActivity.this, "Registration successful", Toast.LENGTH_SHORT).show();
                     startActivity(new Intent(RegisterActivity.this, LoginActivity.class));
                     finish();
-                } else {
-                    Toast.makeText(RegisterActivity.this, "Registration failed", Toast.LENGTH_SHORT).show();
+                } else if (result == -1) { // Check for hashing error if addUser returns -1
+                    Toast.makeText(RegisterActivity.this, "Registration failed (Internal Error)", Toast.LENGTH_SHORT).show();
+                }
+                else { // Assume username conflict or other DB error
+                    Toast.makeText(RegisterActivity.this, "Registration failed (Username might exist)", Toast.LENGTH_SHORT).show();
                 }
             }
         });

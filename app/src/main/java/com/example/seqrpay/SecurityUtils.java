@@ -1,52 +1,68 @@
 package com.example.seqrpay;
 
 import android.util.Base64;
+import android.util.Log; // Added for error logging
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.KeySpec;
 
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
+import javax.crypto.Cipher; // Keep if needed for other encryption later
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec; // Keep if needed for other encryption later
+import javax.crypto.spec.GCMParameterSpec; // Keep if needed for other encryption later
+
 
 public class SecurityUtils {
+
+    private static final String TAG = "SecurityUtils";
+    private static final String PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256";
+    private static final int SALT_BYTE_SIZE = 16; // Standard salt size
+    private static final int HASH_BYTE_SIZE = 32; // Corresponds to SHA-256 output size
+    private static final int PBKDF2_ITERATIONS = 10000; // Iteration count (adjust as needed)
+
+    // --- Keep AES methods if needed for future encryption, but DO NOT use encryptKey/decryptKey ---
     private static final String AES_ALGORITHM = "AES/GCM/NoPadding";
     private static final int GCM_TAG_LENGTH = 128;
 
-    // Hash password using SHA-256
-    public static String hashPassword(String password) {
+    // Generate a secure random salt
+    public static byte[] generateSalt() {
+        SecureRandom random = new SecureRandom();
+        byte[] salt = new byte[SALT_BYTE_SIZE];
+        random.nextBytes(salt);
+        return salt;
+    }
+
+    // Hash password using PBKDF2 with HmacSHA256
+    public static String hashPassword(final String password, final byte[] salt) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+            KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, HASH_BYTE_SIZE * 8);
+            SecretKeyFactory factory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM);
+            byte[] hash = factory.generateSecret(spec).getEncoded();
             return Base64.encodeToString(hash, Base64.NO_WRAP);
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+            Log.e(TAG, "Error hashing password", e);
+            // In a real app, handle this more gracefully - perhaps throw a custom exception
             return null;
         }
     }
 
-    // Generate a random AES-256 encryption key
-    public static String generateEncryptionKey() {
-        try {
-            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-            keyGen.init(256, new SecureRandom());
-            SecretKey key = keyGen.generateKey();
-            return Base64.encodeToString(key.getEncoded(), Base64.NO_WRAP);
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
+    // --- REMOVED Insecure Methods ---
+    // public static String hashPassword(String password) { ... } // Old SHA-256 version removed
+    // public static String generateEncryptionKey() { ... } // Keep if needed for OTHER keys later
+    // public static String encryptKey(String key, String hashedPassword) { ... } // REMOVED (Insecure)
+    // public static String decryptKey(String encryptedKey, String hashedPassword) { ... } // REMOVED (Insecure)
 
-    // Encrypt data using AES-256
+    // --- Keep AES encrypt/decrypt if you plan to encrypt OTHER data securely LATER ---
+    // Ensure you use a securely derived key (e.g., via PBKDF2 with a *different* salt)
+    // or a randomly generated key stored securely.
     public static String encrypt(String data, String keyStr) {
         try {
             byte[] keyBytes = Base64.decode(keyStr, Base64.NO_WRAP);
-            SecretKey key = new SecretKeySpec(keyBytes, "AES");
+            SecretKeySpec key = new SecretKeySpec(keyBytes, "AES");
 
             Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
             SecureRandom random = new SecureRandom();
@@ -65,16 +81,15 @@ public class SecurityUtils {
 
             return Base64.encodeToString(combined, Base64.NO_WRAP);
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "Encryption error", e);
             return null;
         }
     }
 
-    // Decrypt data using AES-256
     public static String decrypt(String encryptedDataStr, String keyStr) {
         try {
             byte[] keyBytes = Base64.decode(keyStr, Base64.NO_WRAP);
-            SecretKey key = new SecretKeySpec(keyBytes, "AES");
+            SecretKeySpec key = new SecretKeySpec(keyBytes, "AES");
 
             byte[] combined = Base64.decode(encryptedDataStr, Base64.NO_WRAP);
 
@@ -91,23 +106,9 @@ public class SecurityUtils {
             byte[] decryptedData = cipher.doFinal(encryptedData);
             return new String(decryptedData, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e(TAG, "Decryption error", e);
             return null;
         }
     }
 
-    // Encrypt user's key with their password (simplified - in a real app use a more secure method)
-    public static String encryptKey(String key, String hashedPassword) {
-        // Use the first 32 bytes of the hashed password as the encryption key
-        String simplifiedKey = hashedPassword.substring(0, Math.min(hashedPassword.length(), 32));
-        return encrypt(key, Base64.encodeToString(simplifiedKey.getBytes(), Base64.NO_WRAP));
-    }
-
-    // Decrypt user's key with their password
-    public static String decryptKey(String encryptedKey, String hashedPassword) {
-        // Use the first 32 bytes of the hashed password as the encryption key
-        String simplifiedKey = hashedPassword.substring(0, Math.min(hashedPassword.length(), 32));
-        return decrypt(encryptedKey, Base64.encodeToString(simplifiedKey.getBytes(), Base64.NO_WRAP));
-    }
 }
-

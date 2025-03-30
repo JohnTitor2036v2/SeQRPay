@@ -1,13 +1,10 @@
 // Top-level build.gradle
 buildscript {
-    dependencies {
-        classpath 'com.android.tools.build:gradle:7.4.2'
-
-        // NOTE: Do not place your application dependencies here; they belong
-        // in the individual module build.gradle files
-    }
+    // Remove dependencies block or move it to another location
 }
 
+
+// You can keep the clean task
 task clean(type: Delete) {
     delete rootProject.buildDir
 }

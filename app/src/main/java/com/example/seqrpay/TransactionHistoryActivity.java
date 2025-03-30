@@ -1,4 +1,4 @@
-package com.example.secureqrpayment;
+package com.example.seqrpay;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;

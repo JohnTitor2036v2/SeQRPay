@@ -23,7 +23,7 @@ import okhttp3.Response;
 
 public class VirusTotalApi {
     private static final String TAG = "VirusTotalApi";
-    private static final String API_KEY = "YOUR_VIRUS_TOTAL_API_KEY"; // Replace with your actual API key
+    private static final String API_KEY = "0c7db45fb82dd2a5ed70ee6a306442ec210e5df85bf63e7476fb73b7d1eb1512"; // Replace with your actual API key
     private static final String SCAN_URL_ENDPOINT = "https://www.virustotal.com/api/v3/urls";
     private static final String GET_REPORT_ENDPOINT = "https://www.virustotal.com/api/v3/analyses/";
 

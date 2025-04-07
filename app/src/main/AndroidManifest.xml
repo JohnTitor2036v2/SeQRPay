@@ -2,10 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Add required permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
-
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -25,13 +23,15 @@
             </intent-filter>
         </activity>
 
-        <!-- Register all activities -->
         <activity android:name=".LoginActivity" />
         <activity android:name=".RegisterActivity" />
         <activity android:name=".DashboardActivity" />
         <activity android:name=".QRScannerActivity" />
         <activity android:name=".TransferActivity" />
         <activity android:name=".TransactionHistoryActivity" />
-    </application>
+
+        <activity
+            android:name=".ScanResultActivity"
+            android:label="@string/title_activity_scan_result" /> </application>
 
 </manifest>

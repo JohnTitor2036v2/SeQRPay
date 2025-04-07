@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">SeQR Pay</string>
+    <string name="title_activity_scan_result">Scan Result</string>
+    <string name="scan_result_safe">URL Safe</string>
+    <string name="scan_result_unsafe">Security Alert</string>
+    <string name="scan_result_error">Scan Error</string>
+    <string name="scan_error_no_url">Error: No URL provided for scanning.</string>
+    <string name="scan_error_details_prefix">Details: </string>
+    <string name="proceed_to_payment">Proceed to Payment</string>
+
+    <string name="qr_scanning_url">Scanning URL for security threats\u2026</string>
+    <string name="cancel">Cancel</string>
+    <string name="error_generic">An unexpected error occurred.</string>
+
 </resources>

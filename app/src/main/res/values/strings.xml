@@ -12,4 +12,9 @@
     <string name="cancel">Cancel</string>
     <string name="error_generic">An unexpected error occurred.</string>
 
+    <string name="gemini_rating_label">Gemini Trustworthiness Rating:</string>
+    <string name="gemini_rating_loading">Getting Gemini rating…</string>
+    <string name="gemini_rating_error">Error getting Gemini rating</string>
+    <string name="gemini_error_details_prefix">Gemini Error: </string>
+
 </resources>

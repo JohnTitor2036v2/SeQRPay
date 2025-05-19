@@ -5,7 +5,7 @@ import androidx.core.content.ContextCompat;
 
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Log; // Added Log
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -14,7 +14,6 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-// Import Gemini classes (Make sure SDK dependency is added)
 import com.google.ai.client.generativeai.GenerativeModel;
 import com.google.ai.client.generativeai.java.GenerativeModelFutures;
 import com.google.ai.client.generativeai.type.BlockThreshold;
@@ -27,122 +26,250 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.security.PublicKey;
 import java.util.Collections;
-import java.util.concurrent.Executor; // Use java.util.concurrent.Executor
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.Executor;
 
 public class ScanResultActivity extends AppCompatActivity {
 
+    // Constants for intent extras (already defined in this class from previous versions)
     public static final String EXTRA_URL_TO_SCAN = "com.example.seqrpay.EXTRA_URL_TO_SCAN";
-    public static final String EXTRA_PAYMENT_DATA = "com.example.seqrpay.EXTRA_PAYMENT_DATA";
+    public static final String EXTRA_PAYMENT_DATA = "com.example.seqrpay.EXTRA_PAYMENT_DATA"; // Raw QR content
 
-    private static final String TAG = "ScanResultActivity"; // Logging Tag
+    private static final String TAG = "ScanResultActivity";
 
+    // UI Elements
     private ProgressBar progressBar;
     private LinearLayout resultLayout;
-    // VirusTotal UI
-    private ImageView vtStatusIcon;
-    private TextView vtStatusText;
-    private TextView vtDetailsText;
-    // Gemini UI
-    private TextView geminiRatingLabel;
+    private ImageView statusIcon;
+    private TextView statusText;
+    private TextView detailsText;
+
+    // Signature Verification UI elements
+    private TextView tvSignatureStatusLabel, tvSignatureStatusText;
+    private TextView tvPaymentInfoLabel, tvPaymentInfoText;
+
+    // Gemini AI Rating UI elements
+    private TextView geminiRatingLabel; // Assuming R.id.gemini_rating_label exists
     private TextView geminiRatingText;
-    // Buttons
+
+    // Action Buttons
     private Button proceedButton;
     private Button cancelButton;
 
+    // Services
     private VirusTotalApi virusTotalApi;
-    private AppExecutors appExecutors; // For background tasks
-    private GenerativeModelFutures geminiModel; // Gemini Futures API
+    private AppExecutors appExecutors;
+    private GenerativeModelFutures geminiModel;
 
-    private String urlToScan;
-    private String originalPaymentData;
+    // Data from Intent
+    private String payloadType;
+    private String urlToScan; // Will be null for non-URL types
+    private String originalPaymentData; // The full raw QR string
 
-    // State tracking for parallel calls
-    private boolean vtScanComplete = false;
-    private boolean geminiScanComplete = false;
-    private boolean isVtSafe = false;
-    private boolean proceedAllowed = false; // Master flag for proceeding
+    // State variables
+    private boolean signatureVerified = false; // For signed payments
+    private boolean vtScanComplete = false;    // For URL scans
+    private boolean geminiScanComplete = false; // For URL scans
+    private boolean isVtSafe = false;          // For URL scans
+    private boolean proceedAllowed = false;    // Overall flag
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_scan_result);
 
-        // --- Initialize UI ---
+        // Initialize UI elements
         progressBar = findViewById(R.id.scan_progress_bar);
         resultLayout = findViewById(R.id.scan_result_layout);
-        // VirusTotal UI
-        vtStatusIcon = findViewById(R.id.scan_status_icon); // Renamed ID in thought, assume scan_status_icon
-        vtStatusText = findViewById(R.id.scan_status_text); // Renamed ID in thought, assume scan_status_text
-        vtDetailsText = findViewById(R.id.scan_details_text); // Renamed ID in thought, assume scan_details_text
-        // Gemini UI
+        statusIcon = findViewById(R.id.scan_status_icon);
+        statusText = findViewById(R.id.scan_status_text);
+        detailsText = findViewById(R.id.scan_details_text);
+
+        tvSignatureStatusLabel = findViewById(R.id.tv_signature_status_label);
+        tvSignatureStatusText = findViewById(R.id.tv_signature_status_text);
+        tvPaymentInfoLabel = findViewById(R.id.tv_payment_info_label);
+        tvPaymentInfoText = findViewById(R.id.tv_payment_info_text);
+
         geminiRatingLabel = findViewById(R.id.gemini_rating_label);
         geminiRatingText = findViewById(R.id.gemini_rating_text);
-        // Buttons
+
         proceedButton = findViewById(R.id.btn_proceed_payment);
         cancelButton = findViewById(R.id.btn_scan_cancel);
 
-        // --- Initialize Services ---
+        // Initialize Services
         virusTotalApi = new VirusTotalApi(this);
-        appExecutors = AppExecutors.getInstance(); // Get executor instance
-        initializeGemini(); // Initialize Gemini Model
+        appExecutors = AppExecutors.getInstance();
+        initializeGemini();
 
-        // --- Get Data from Intent ---
-        urlToScan = getIntent().getStringExtra(EXTRA_URL_TO_SCAN);
-        originalPaymentData = getIntent().getStringExtra(EXTRA_PAYMENT_DATA);
+        // Get Data from Intent
+        Intent intent = getIntent();
+        payloadType = intent.getStringExtra(QRScannerActivity.EXTRA_QR_PAYLOAD_TYPE);
+        urlToScan = intent.getStringExtra(EXTRA_URL_TO_SCAN);
+        originalPaymentData = intent.getStringExtra(EXTRA_PAYMENT_DATA);
 
-        // --- Initial UI State ---
-        progressBar.setVisibility(View.VISIBLE);
-        resultLayout.setVisibility(View.GONE);
-        geminiRatingText.setText(R.string.gemini_rating_loading); // Show loading for Gemini too
+        // Initial UI State
+        showLoadingState(true);
+        hideAllScanSpecificSections(); // Hide sections that are type-dependent
 
-        // --- Start Scans (if URL exists) ---
-        if (urlToScan != null && !urlToScan.isEmpty()) {
-            Log.d(TAG, "Starting scans for URL: " + urlToScan);
-            startVirusTotalScan(urlToScan);
-            startGeminiScan(urlToScan);
-        } else {
-            // No URL to scan (maybe just payment data)
-            // Decide how to handle: Show "Safe" immediately? Show different UI?
-            Log.w(TAG, "No URL provided to scan.");
-            // For now, treat as safe but without scan details
-            updateVirusTotalResult(true, "No URL provided for scanning.");
-            updateGeminiResult("N/A - No URL provided.");
-            checkCompletionAndShowResult(); // Update UI based on default state
+        // Process based on payload type
+        if (payloadType == null) {
+            Log.e(TAG, "Payload type is null. Cannot process QR.");
+            updateOverallStatusUI(false, "Error: Invalid QR data received.", null);
+            showLoadingState(false);
+            checkCompletionAndFinalizeUI();
+            return;
         }
 
-        // --- Button Listeners ---
+        Log.d(TAG, "Processing Payload Type: " + payloadType);
+        switch (payloadType) {
+            case QRScannerActivity.PAYLOAD_TYPE_SIGNED_PAYMENT:
+                handleSignedPayment(intent);
+                // For signed payments, completion is determined within handleSignedPayment
+                showLoadingState(false); // Hide loading as processing is synchronous here
+                checkCompletionAndFinalizeUI();
+                break;
+            case QRScannerActivity.PAYLOAD_TYPE_URL:
+                if (urlToScan != null && !urlToScan.isEmpty()) {
+                    updateOverallStatusUI(true, getString(R.string.qr_scanning_url), "Checking URL with security services...");
+                    // Make relevant sections visible for URL scan
+                    geminiRatingLabel.setVisibility(View.VISIBLE);
+                    geminiRatingText.setVisibility(View.VISIBLE);
+                    geminiRatingText.setText(R.string.gemini_rating_loading);
+
+                    startVirusTotalScan(urlToScan);
+                    startGeminiScan(urlToScan);
+                } else {
+                    updateOverallStatusUI(false, "Error: URL payload type but no URL provided.", null);
+                    vtScanComplete = true; geminiScanComplete = true; // Mark as done to show error
+                    showLoadingState(false);
+                    checkCompletionAndFinalizeUI();
+                }
+                break;
+            case QRScannerActivity.PAYLOAD_TYPE_OTHER:
+            default:
+                updateOverallStatusUI(true, "Scanned Content:", originalPaymentData);
+                detailsText.setText("(No specific security scan performed for this QR type)");
+                proceedAllowed = true; // Example: Allow proceeding for "other" types by default
+                vtScanComplete = true; geminiScanComplete = true; // Mark scans as "done"
+                showLoadingState(false);
+                checkCompletionAndFinalizeUI();
+                break;
+        }
+
+        // Button Listeners
         proceedButton.setOnClickListener(v -> proceedToPayment());
         cancelButton.setOnClickListener(v -> finish());
     }
 
+    private void showLoadingState(boolean isLoading) {
+        progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
+        resultLayout.setVisibility(isLoading ? View.GONE : View.VISIBLE);
+    }
+
+    private void hideAllScanSpecificSections() {
+        tvSignatureStatusLabel.setVisibility(View.GONE);
+        tvSignatureStatusText.setVisibility(View.GONE);
+        tvPaymentInfoLabel.setVisibility(View.GONE);
+        tvPaymentInfoText.setVisibility(View.GONE);
+        geminiRatingLabel.setVisibility(View.GONE);
+        geminiRatingText.setVisibility(View.GONE);
+    }
+
     private void initializeGemini() {
-        // Make sure GEMINI_API_KEY is set in BuildConfig via local.properties
-        String apiKey = BuildConfig.GEMINI_API_KEY;
+        String apiKey = BuildConfig.GEMINI_API_KEY; // Ensure this is in your local.properties & build.gradle
         if (apiKey == null || apiKey.isEmpty() || apiKey.equals("YOUR_API_KEY_HERE")) {
             Log.e(TAG, "Gemini API Key not configured in BuildConfig!");
-            // Handle error - maybe disable Gemini feature
-            geminiRatingText.setText(R.string.gemini_rating_error);
-            geminiScanComplete = true; // Mark as 'complete' to not block UI
+            geminiScanComplete = true; // Mark as complete to not block UI if API key is missing
             return;
         }
-
-        // Basic safety settings - adjust as needed
         SafetySetting harassmentSafety = new SafetySetting(HarmCategory.HARASSMENT, BlockThreshold.ONLY_HIGH);
-        // Add other categories if needed: HATE_SPEECH, SEXUALLY_EXPLICIT, DANGEROUS_CONTENT
+        // Add other safety settings as needed: HATE_SPEECH, SEXUALLY_EXPLICIT, DANGEROUS_CONTENT
         GenerationConfig.Builder configBuilder = new GenerationConfig.Builder();
-        // configBuilder.temperature = 0.9f; // Example config
+        // configBuilder.temperature = 0.9f; // Example optional configurations
         // configBuilder.topK = 1;
-        // configBuilder.topP = 1f;
-        // configBuilder.maxOutputTokens = 2048;
-
         GenerativeModel googleAiModel = new GenerativeModel(
-                "gemini-1.5-flash", // Or another suitable model
+                "gemini-1.5-flash", // Or "gemini-pro" or other suitable model
                 apiKey,
                 configBuilder.build(),
-                Collections.singletonList(harassmentSafety) // Add more safety settings if needed
+                Collections.singletonList(harassmentSafety)
         );
         geminiModel = GenerativeModelFutures.from(googleAiModel);
+    }
+
+    private void handleSignedPayment(Intent intent) {
+        // Make signature section visible
+        tvSignatureStatusLabel.setVisibility(View.VISIBLE);
+        tvSignatureStatusText.setVisibility(View.VISIBLE);
+        tvPaymentInfoLabel.setVisibility(View.VISIBLE);
+        tvPaymentInfoText.setVisibility(View.VISIBLE);
+
+        String signedDataBlockStr = intent.getStringExtra(QRScannerActivity.EXTRA_SIGNED_DATA_BLOCK);
+        String signatureBase64 = intent.getStringExtra(QRScannerActivity.EXTRA_SIGNATURE);
+        String payeeUsername = intent.getStringExtra(QRScannerActivity.EXTRA_PAYEE_USERNAME);
+        String amount = intent.getStringExtra(QRScannerActivity.EXTRA_AMOUNT);
+        String currency = intent.getStringExtra(QRScannerActivity.EXTRA_CURRENCY);
+
+        String paymentInfo = "Payee: " + (payeeUsername != null ? payeeUsername : "N/A") +
+                             "\nAmount: " + (amount != null ? amount : "N/A") +
+                             " " + (currency != null ? currency : "");
+        tvPaymentInfoText.setText(paymentInfo);
+
+        if (signedDataBlockStr == null || signatureBase64 == null || payeeUsername == null) {
+            Log.e(TAG, "Missing data for signed payment verification.");
+            updateOverallStatusUI(false, "Error: Incomplete Signed Payment Data", "Could not verify payment details.");
+            tvSignatureStatusText.setText("Error: Incomplete Data");
+            tvSignatureStatusText.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark));
+            signatureVerified = false;
+        } else {
+            try {
+                JSONObject dataToSignJson = new JSONObject(signedDataBlockStr);
+                String canonicalDataToSign = createCanonicalString(dataToSignJson);
+
+                if (canonicalDataToSign == null) {
+                    throw new Exception("Failed to create canonical string for verification.");
+                }
+                Log.d(TAG, "Canonical data for verification: " + canonicalDataToSign);
+
+                PublicKey payeePublicKey = UserKeyPairManager.getPublicKeyForPayee(this, payeeUsername);
+
+                if (payeePublicKey == null) {
+                    Log.e(TAG, "Could not retrieve public key for payee: " + payeeUsername);
+                    updateOverallStatusUI(false, "Security Alert", "Cannot verify payee: Public key not found.");
+                    tvSignatureStatusText.setText("Error: Payee Key Missing");
+                    tvSignatureStatusText.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark));
+                    signatureVerified = false;
+                } else {
+                    signatureVerified = SecurityUtils.verifySignature(canonicalDataToSign, signatureBase64, payeePublicKey);
+                    if (signatureVerified) {
+                        Log.i(TAG, "Signature VERIFIED for payee: " + payeeUsername);
+                        updateOverallStatusUI(true, "Payment QR Verified", paymentInfo); // Show payment info in main details
+                        tvSignatureStatusText.setText("Valid");
+                        tvSignatureStatusText.setTextColor(ContextCompat.getColor(this, android.R.color.holo_green_dark));
+                    } else {
+                        Log.w(TAG, "Signature INVALID for payee: " + payeeUsername);
+                        updateOverallStatusUI(false, "Security Alert: Invalid Signature!", "The payment QR code could not be verified. It may have been tampered with or is not from the claimed payee.");
+                        tvSignatureStatusText.setText("Invalid!");
+                        tvSignatureStatusText.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark));
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error during signature verification process", e);
+                updateOverallStatusUI(false, "Error: Signature Processing Failed", e.getMessage());
+                tvSignatureStatusText.setText("Error: Verification Failed");
+                tvSignatureStatusText.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark));
+                signatureVerified = false;
+            }
+        }
+        // For signed payments, VT and Gemini scans are considered "complete" as they are not applicable.
+        vtScanComplete = true;
+        geminiScanComplete = true;
+        proceedAllowed = signatureVerified; // Allow proceeding only if signature is valid
     }
 
     private void startVirusTotalScan(String url) {
@@ -150,152 +277,205 @@ public class ScanResultActivity extends AppCompatActivity {
             @Override
             public void onResult(boolean isSafe, String message) {
                 Log.d(TAG, "VirusTotal Result: isSafe=" + isSafe + ", message=" + message);
-                isVtSafe = isSafe; // Store VT safety status
-                updateVirusTotalResult(isSafe, message);
+                isVtSafe = isSafe; // Store VT safety status specifically for URL scans
+                updateOverallStatusUI(isSafe, isSafe ? getString(R.string.scan_result_safe) : getString(R.string.scan_result_unsafe), message);
                 vtScanComplete = true;
-                checkCompletionAndShowResult();
+                checkCompletionAndFinalizeUI();
             }
 
             @Override
             public void onError(String error) {
                 Log.e(TAG, "VirusTotal Error: " + error);
                 isVtSafe = false; // Treat errors as unsafe for caution
-                updateVirusTotalResult(false, getString(R.string.scan_result_error) + ": " + error);
+                updateOverallStatusUI(false, getString(R.string.scan_result_error), "VirusTotal: " + error);
                 vtScanComplete = true;
-                checkCompletionAndShowResult();
+                checkCompletionAndFinalizeUI();
             }
         });
     }
 
     private void startGeminiScan(String url) {
         if (geminiModel == null) {
-            Log.e(TAG, "Gemini model not initialized, skipping scan.");
-            updateGeminiResult(getString(R.string.gemini_rating_error)); // Show error in UI
+            Log.w(TAG, "Gemini model not initialized, skipping Gemini scan.");
+            updateGeminiDisplay(getString(R.string.gemini_rating_error) + " (Not initialized)");
             geminiScanComplete = true;
-            checkCompletionAndShowResult();
+            checkCompletionAndFinalizeUI();
             return;
         }
 
-        // Construct the prompt
+        geminiRatingLabel.setVisibility(View.VISIBLE); // Ensure visible
+        geminiRatingText.setVisibility(View.VISIBLE);
+        geminiRatingText.setText(R.string.gemini_rating_loading);
+
         Content prompt = new Content.Builder()
                 .addText("Analyze the trustworthiness of this URL for a secure payment app user. Is it safe, potentially risky, or malicious? Provide a very brief explanation (1-2 sentences max). URL: " + url)
                 .build();
-
-        // Use the background executor from AppExecutors
-        Executor backgroundExecutor = appExecutors.diskIO();
+        Executor backgroundExecutor = appExecutors.diskIO(); // Use your AppExecutors
         ListenableFuture<GenerateContentResponse> future = geminiModel.generateContent(prompt);
 
         Futures.addCallback(future, new FutureCallback<GenerateContentResponse>() {
             @Override
             public void onSuccess(GenerateContentResponse result) {
-                // This callback might not be on the main thread, use AppExecutors to post UI update
                 String geminiResponseText = "";
                 try {
-                    // Basic text extraction, might need more robust parsing depending on model output
                     geminiResponseText = result.getText();
+                    if (geminiResponseText == null || geminiResponseText.isEmpty()) {
+                         geminiResponseText = getString(R.string.gemini_rating_error) + " (Empty Response)";
+                    }
                     Log.d(TAG, "Gemini Result: " + geminiResponseText);
-                } catch (Exception e) {
+                } catch (Exception e) { // Catch any exception during text extraction
                     Log.e(TAG, "Error extracting text from Gemini response", e);
                     geminiResponseText = getString(R.string.gemini_rating_error) + " (Parse Error)";
                 }
                 final String finalResponse = geminiResponseText;
                 appExecutors.mainThread().execute(() -> {
-                    updateGeminiResult(finalResponse);
+                    updateGeminiDisplay(finalResponse);
                     geminiScanComplete = true;
-                    checkCompletionAndShowResult();
+                    checkCompletionAndFinalizeUI();
                 });
             }
 
             @Override
             public void onFailure(Throwable t) {
-                Log.e(TAG, "Gemini Error: " + t.getMessage(), t);
+                Log.e(TAG, "Gemini Scan Error: " + t.getMessage(), t);
                 appExecutors.mainThread().execute(() -> {
-                    updateGeminiResult(getString(R.string.gemini_rating_error));
+                    updateGeminiDisplay(getString(R.string.gemini_rating_error) + ": " + t.getMessage());
                     geminiScanComplete = true;
-                    checkCompletionAndShowResult();
+                    checkCompletionAndFinalizeUI();
                 });
             }
-        }, backgroundExecutor); // Ensure the callback itself is processed by the background executor first
+        }, backgroundExecutor);
     }
 
-    // --- UI Update Methods (run on main thread) ---
+    private void updateOverallStatusUI(boolean isSafe, String statusMessage, String detailsMessage) {
+        statusText.setText(statusMessage);
+        statusText.setVisibility(View.VISIBLE);
 
-    private void updateVirusTotalResult(boolean isSafe, String message) {
-        // Update VirusTotal specific UI elements
-        vtDetailsText.setText(message);
+        if (detailsMessage != null && !detailsMessage.isEmpty()) {
+            detailsText.setText(detailsMessage);
+            detailsText.setVisibility(View.VISIBLE);
+        } else {
+            detailsText.setVisibility(View.GONE);
+        }
+
         if (isSafe) {
-            vtStatusIcon.setImageResource(R.drawable.ic_check_circle_green);
-            vtStatusIcon.setColorFilter(ContextCompat.getColor(this, android.R.color.holo_green_dark));
-            vtStatusText.setText(R.string.scan_result_safe);
+            statusIcon.setImageResource(R.drawable.ic_check_circle_green);
+            statusIcon.setColorFilter(ContextCompat.getColor(this, android.R.color.holo_green_dark));
         } else {
-            vtStatusIcon.setImageResource(R.drawable.ic_warning_red);
-            vtStatusIcon.setColorFilter(ContextCompat.getColor(this, android.R.color.holo_red_dark));
-            vtStatusText.setText(isVtSafe ? R.string.scan_result_safe : R.string.scan_result_unsafe); // Use stored safety status
-            if(message.startsWith(getString(R.string.scan_result_error))){ // Check if it was an error message
-                vtStatusText.setText(R.string.scan_result_error);
-            }
+            statusIcon.setImageResource(R.drawable.ic_warning_red);
+            statusIcon.setColorFilter(ContextCompat.getColor(this, android.R.color.holo_red_dark));
         }
+        statusIcon.setVisibility(View.VISIBLE);
     }
 
-    private void updateGeminiResult(String rating) {
-        // Update Gemini specific UI elements
+    private void updateGeminiDisplay(String rating) {
+        geminiRatingLabel.setVisibility(View.VISIBLE);
+        geminiRatingText.setVisibility(View.VISIBLE);
         geminiRatingText.setText(rating);
-        // You could add logic here to parse Gemini's response for keywords like "safe", "risky", "malicious"
-        // and potentially set another icon or color for the Gemini rating text.
     }
 
+    private void checkCompletionAndFinalizeUI() {
+        // This method is called when an async operation finishes or a synchronous path completes.
+        // We only proceed to hide loading and show final button state if ALL relevant operations are done.
 
-    // Checks if both scans are done and updates the final UI state
-    private void checkCompletionAndShowResult() {
-        if (vtScanComplete && geminiScanComplete) {
-            Log.d(TAG, "Both scans complete. Updating final UI.");
-            progressBar.setVisibility(View.GONE);
-            resultLayout.setVisibility(View.VISIBLE);
-
-            // --- Determine overall safety and if proceed is allowed ---
-            // Example Logic: Require VirusTotal to be safe. Gemini is advisory.
-            proceedAllowed = isVtSafe; // Base decision on VirusTotal result primarily
-
-            // Modify logic based on your requirements. E.g., require both?
-            // proceedAllowed = isVtSafe && isGeminiRatingPositive(geminiRatingText.getText().toString());
-
-            if (proceedAllowed) {
-                proceedButton.setVisibility(View.VISIBLE);
-            } else {
-                proceedButton.setVisibility(View.GONE);
-                // Maybe show an extra warning if VT was safe but Gemini was negative?
-                if (isVtSafe && !isGeminiRatingPositive(geminiRatingText.getText().toString())) {
-                    Toast.makeText(this, "Note: VirusTotal scan clear, but Gemini suggests caution.", Toast.LENGTH_LONG).show();
-                }
+        if (QRScannerActivity.PAYLOAD_TYPE_URL.equals(payloadType)) {
+            if (!vtScanComplete || !geminiScanComplete) {
+                Log.d(TAG, "URL Scan: Waiting for all scans to complete (VT: " + vtScanComplete + ", Gemini: " + geminiScanComplete + ")");
+                return; // Not all scans are done yet for URL type
             }
-        } else {
-            Log.d(TAG, "Waiting for scans to complete (VT: " + vtScanComplete + ", Gemini: " + geminiScanComplete + ")");
-            // Keep progress bar visible, result layout hidden until both are done
-            progressBar.setVisibility(View.VISIBLE);
-            resultLayout.setVisibility(View.GONE);
         }
+        // For SIGNED_PAYMENT or OTHER, vtScanComplete and geminiScanComplete were set to true earlier.
+
+        showLoadingState(false); // Hide progress bar, show result layout
+        Log.d(TAG, "All relevant processes complete. Finalizing UI for payload type: " + payloadType);
+
+        // Determine overall proceed logic based on the payload type and results
+        if (QRScannerActivity.PAYLOAD_TYPE_SIGNED_PAYMENT.equals(payloadType)) {
+            proceedAllowed = signatureVerified; // Based on signature check performed in handleSignedPayment
+        } else if (QRScannerActivity.PAYLOAD_TYPE_URL.equals(payloadType)) {
+            proceedAllowed = isVtSafe; // For URLs, base on VirusTotal primarily
+            if (isVtSafe && !isGeminiRatingPositive(geminiRatingText.getText().toString())) {
+                // Optionally show a non-blocking warning if VT is safe but Gemini is negative
+                Toast.makeText(this, "Note: URL scan clear, but AI suggests caution.", Toast.LENGTH_LONG).show();
+            }
+        } else if (QRScannerActivity.PAYLOAD_TYPE_OTHER.equals(payloadType)) {
+            // Policy for "OTHER" type was already set (e.g., proceedAllowed = true)
+            // updateOverallStatusUI was already called in the main switch-case.
+        } else {
+            proceedAllowed = false; // Default for unknown or error states not caught earlier
+        }
+
+        // Set visibility of the proceed button
+        proceedButton.setVisibility(proceedAllowed ? View.VISIBLE : View.GONE);
     }
 
-    // Helper to interpret Gemini's text result (very basic example)
     private boolean isGeminiRatingPositive(String geminiResult) {
-        if (geminiResult == null) return true; // Default to okay if error/no result
+        if (geminiResult == null || geminiResult.isEmpty() ||
+            geminiResult.startsWith(getString(R.string.gemini_rating_error)) ||
+            geminiResult.equals(getString(R.string.gemini_rating_loading))) {
+            return true; // Default to positive (or neutral) if error, loading, or no meaningful response
+        }
         String lowerResult = geminiResult.toLowerCase();
         // Look for negative keywords - refine this based on typical responses
         return !lowerResult.contains("malicious") &&
-                !lowerResult.contains("risky") &&
-                !lowerResult.contains("unsafe") &&
-                !lowerResult.contains("warning") &&
-                !lowerResult.contains("caution");
+               !lowerResult.contains("risky") &&
+               !lowerResult.contains("unsafe") &&
+               !lowerResult.contains("warning") &&
+               !lowerResult.contains("caution");
     }
 
     private void proceedToPayment() {
         if (originalPaymentData != null && !originalPaymentData.isEmpty()) {
-            PaymentConfirmationDialog dialog = new PaymentConfirmationDialog(this, originalPaymentData);
+            PaymentConfirmationDialog dialog = new PaymentConfirmationDialog(this, originalPaymentData, payloadType);
+            dialog.setOnDismissListener(d -> {
+                // Optional: You might want to finish ScanResultActivity only if payment was confirmed
+                // or always finish it. For now, always finish.
+                finish();
+            });
             dialog.show();
-            dialog.setOnDismissListener(d -> finish());
         } else {
             Toast.makeText(this, R.string.error_generic, Toast.LENGTH_SHORT).show();
-            finish();
+            finish(); // Close if there's no data to proceed with
         }
+    }
+
+    /**
+     * Creates a canonical string representation of a JSONObject for signing/verification.
+     * Sorts keys alphabetically and concatenates key=value pairs with '&'.
+     * This MUST be identical to the method used in GenerateQrActivity.
+     */
+    private String createCanonicalString(JSONObject json) {
+        if (json == null) return null;
+        try {
+            Map<String, String> sortedMap = new TreeMap<>();
+            java.util.Iterator<String> keys = json.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                // Ensure values are strings; adjust if other types are directly in dataToSign
+                sortedMap.put(key, json.getString(key));
+            }
+            StringBuilder sb = new StringBuilder();
+            boolean first = true;
+            for (Map.Entry<String, String> entry : sortedMap.entrySet()) {
+                if (!first) {
+                    sb.append("&");
+                }
+                // Basic URL encoding might be needed if values can contain '&' or '='
+                // For simplicity, assuming values are simple for now.
+                // sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8.name()))
+                //   .append("=")
+                //   .append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8.name()));
+                sb.append(entry.getKey()).append("=").append(entry.getValue());
+                first = false;
+            }
+            return sb.toString();
+        } catch (JSONException e) {
+            Log.e(TAG, "Could not create canonical string from JSON for verification", e);
+            return null;
+        }
+        // catch (UnsupportedEncodingException e) { // If using URLEncoder
+        //     Log.e(TAG, "UTF-8 not supported for canonical string URLEncoding?", e);
+        //     return null;
+        // }
     }
 }

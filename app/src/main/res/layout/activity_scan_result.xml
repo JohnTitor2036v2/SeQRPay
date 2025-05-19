@@ -15,6 +15,7 @@
         android:layout_centerHorizontal="true"
         android:layout_marginTop="100dp"
         android:visibility="visible" />
+
     <LinearLayout
         android:id="@+id/scan_result_layout"
         android:layout_width="match_parent"
@@ -22,14 +23,13 @@
         android:orientation="vertical"
         android:layout_centerInParent="true"
         android:gravity="center_horizontal"
-        android:visibility="gone"> <ImageView
-        android:id="@+id/scan_status_icon"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
-        android:layout_marginBottom="8dp"
-        tools:src="@drawable/ic_launcher_foreground" />
-
-        <TextView
+        android:visibility="gone"
+        tools:visibility="visible"> <ImageView
+            android:id="@+id/scan_status_icon"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginBottom="8dp"
+            tools:srcCompat="@drawable/ic_check_circle_green" /> <TextView
             android:id="@+id/scan_status_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -37,7 +37,7 @@
             android:textSize="18sp"
             android:textStyle="bold"
             android:gravity="center"
-            tools:text="VirusTotal Status" />
+            tools:text="Scan Status Title" />
 
         <TextView
             android:id="@+id/scan_details_text"
@@ -46,8 +46,51 @@
             android:layout_marginBottom="20dp"
             android:textSize="14sp"
             android:gravity="center"
-            tools:text="VirusTotal details" />
+            tools:text="Detailed scan information or error messages will appear here." />
 
+        <TextView
+            android:id="@+id/tv_signature_status_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Signature Status:"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:visibility="gone"
+            tools:visibility="visible"/>
+
+        <TextView
+            android:id="@+id/tv_signature_status_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone"
+            tools:visibility="visible"
+            tools:text="Valid"/>
+
+        <TextView
+            android:id="@+id/tv_payment_info_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Payment Details (from QR):"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            tools:visibility="visible"/>
+
+        <TextView
+            android:id="@+id/tv_payment_info_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone"
+            tools:visibility="visible"
+            tools:text="Payee: testuser\nAmount: 12.34 USD"/>
         <TextView
             android:id="@+id/gemini_rating_label"
             android:layout_width="wrap_content"
@@ -55,9 +98,9 @@
             android:layout_marginTop="16dp"
             android:text="@string/gemini_rating_label"
             android:textStyle="bold"
-            android:textSize="16sp" />
-
-        <TextView
+            android:textSize="16sp"
+            android:visibility="gone"
+            tools:visibility="visible"/> <TextView
             android:id="@+id/gemini_rating_text"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -66,13 +109,18 @@
             android:textSize="14sp"
             android:gravity="center"
             android:minLines="2"
-            tools:text="@string/gemini_rating_loading" /> <Button
+            tools:text="@string/gemini_rating_loading"
+            android:visibility="gone"
+            tools:visibility="visible"/> <Button
             android:id="@+id/btn_proceed_payment"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
             android:text="@string/proceed_to_payment"
-            android:visibility="gone" /> <Button
+            android:visibility="gone"
+            tools:visibility="visible"/>
+
+        <Button
             android:id="@+id/btn_scan_cancel"
             style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="wrap_content"
@@ -82,3 +130,4 @@
     </LinearLayout>
 
 </RelativeLayout>
+

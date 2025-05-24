@@ -1,18 +1,12 @@
 package com.example.seqrpay;
 
 import androidx.appcompat.app.AppCompatActivity;
-// AndroidX Core imports kept for consistency, though not directly used in this snippet for permissions
-// import androidx.core.app.ActivityCompat;
-// import androidx.core.content.ContextCompat;
 
-// import android.Manifest; // Kept for consistency
 import android.content.Intent;
-import android.content.pm.PackageManager; // Kept for consistency
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
-import android.widget.Toast; // Kept for consistency
 
 import com.budiyev.android.codescanner.CodeScanner;
 import com.budiyev.android.codescanner.CodeScannerView;
@@ -21,6 +15,8 @@ import com.google.zxing.Result;
 
 import org.json.JSONObject;
 import org.json.JSONException;
+
+import java.util.regex.Pattern; // For more advanced URL pattern matching
 
 public class QRScannerActivity extends AppCompatActivity {
     private static final String TAG = "QRScannerActivity"; // Logging Tag
@@ -40,9 +36,6 @@ public class QRScannerActivity extends AppCompatActivity {
     public static final String EXTRA_PAYEE_USERNAME = "com.example.seqrpay.EXTRA_PAYEE_USERNAME";
     public static final String EXTRA_AMOUNT = "com.example.seqrpay.EXTRA_AMOUNT";
     public static final String EXTRA_CURRENCY = "com.example.seqrpay.EXTRA_CURRENCY";
-    // EXTRA_URL_TO_SCAN and EXTRA_PAYMENT_DATA are already defined in ScanResultActivity,
-    // but we can use them directly here for clarity or redefine if preferred.
-    // For now, let's assume ScanResultActivity.EXTRA_URL_TO_SCAN and ScanResultActivity.EXTRA_PAYMENT_DATA are accessible.
 
 
     @Override
@@ -82,15 +75,23 @@ public class QRScannerActivity extends AppCompatActivity {
     }
 
     private void processQRCode(String qrContent) {
+        if (qrContent == null || qrContent.trim().isEmpty()) {
+            Log.w(TAG, "Scanned QR code is empty or null.");
+            // Optionally show a toast to the user
+            // Toast.makeText(this, "Scanned QR code is empty.", Toast.LENGTH_SHORT).show();
+            // Restart the preview to allow for another scan.
+            codeScanner.startPreview();
+            return;
+        }
+
         Log.d(TAG, "QR Scanned Content: " + qrContent);
         Intent intent = new Intent(QRScannerActivity.this, ScanResultActivity.class);
 
         // Always pass the original full QR content.
-        // ScanResultActivity.EXTRA_PAYMENT_DATA is used for this.
         intent.putExtra(ScanResultActivity.EXTRA_PAYMENT_DATA, qrContent);
 
         try {
-            // Attempt to parse as our custom signed JSON payload
+            // Attempt to parse as our custom signed JSON payload first
             JSONObject qrJson = new JSONObject(qrContent);
             String type = qrJson.optString("type");
 
@@ -100,21 +101,15 @@ public class QRScannerActivity extends AppCompatActivity {
 
                 JSONObject dataToSign = qrJson.getJSONObject("dataToSign");
                 String signature = qrJson.getString("signature");
-                // Get payeeUsername, amount, currency preferably from dataToSign for integrity,
-                // but they might also be in the outer JSON for quick display.
-                // For verification, what's in dataToSign is paramount.
                 String payeeUsername = dataToSign.optString("payeeUsername", qrJson.optString("payeeUsername"));
                 String amount = dataToSign.optString("amount", qrJson.optString("amount"));
                 String currency = dataToSign.optString("currency", qrJson.optString("currency"));
 
-                intent.putExtra(EXTRA_SIGNED_DATA_BLOCK, dataToSign.toString()); // Pass the dataToSign block as a string
+                intent.putExtra(EXTRA_SIGNED_DATA_BLOCK, dataToSign.toString());
                 intent.putExtra(EXTRA_SIGNATURE, signature);
                 intent.putExtra(EXTRA_PAYEE_USERNAME, payeeUsername);
-                intent.putExtra(EXTRA_AMOUNT, amount); // For display/confirmation
-                intent.putExtra(EXTRA_CURRENCY, currency); // For display/confirmation
-
-                // For signed payments, the "URL to scan" is not applicable in the VirusTotal sense.
-                // We can pass null or the payload itself if ScanResultActivity needs a non-null value.
+                intent.putExtra(EXTRA_AMOUNT, amount);
+                intent.putExtra(EXTRA_CURRENCY, currency);
                 intent.putExtra(ScanResultActivity.EXTRA_URL_TO_SCAN, (String) null); // No external URL to scan
 
             } else {
@@ -122,8 +117,8 @@ public class QRScannerActivity extends AppCompatActivity {
                 handleNonSignedPayload(intent, qrContent);
             }
         } catch (JSONException e) {
-            // Not a valid JSON or not our format, treat as a potential URL or other data
-            Log.w(TAG, "QR content is not a valid JSON or not our signed format. Treating as potential URL/Other. Error: " + e.getMessage());
+            // Not a valid JSON, so it must be a URL or other plain text data.
+            Log.w(TAG, "QR content is not a valid JSON. Treating as potential URL/Other.");
             handleNonSignedPayload(intent, qrContent);
         }
 
@@ -131,12 +126,31 @@ public class QRScannerActivity extends AppCompatActivity {
         finish(); // Finish QRScannerActivity after launching the result activity
     }
 
+    /**
+     * Handles payloads that are not our signed JSON format.
+     * It checks if the content is likely a URL or hostname and prepares the intent accordingly.
+     * @param intent The intent to be sent to ScanResultActivity.
+     * @param qrContent The raw content from the QR code.
+     */
     private void handleNonSignedPayload(Intent intent, String qrContent) {
-        // Check if it's a URL for VirusTotal/Gemini scan
-        if (qrContent.startsWith("http://") || qrContent.startsWith("https://")) {
-            Log.i(TAG, "Identified as a URL QR code.");
+        // Improved heuristic to check if the content is likely a URL or hostname.
+        // It must contain at least one dot, have no whitespace, and have a valid top-level domain (e.g., .com, .kz, .pt).
+        // This is a more robust check than just looking for "http".
+        // Pattern.matches looks for a full string match.
+        boolean isLikelyUrl = Pattern.matches("^[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+$", qrContent.trim());
+
+
+        if (isLikelyUrl) {
+            Log.i(TAG, "Identified as a URL-like QR code: " + qrContent);
             intent.putExtra(EXTRA_QR_PAYLOAD_TYPE, PAYLOAD_TYPE_URL);
-            intent.putExtra(ScanResultActivity.EXTRA_URL_TO_SCAN, qrContent);
+
+            // Prepare the URL for scanning. Prepend "https://" if no protocol is specified.
+            String urlToScan = qrContent.trim();
+            if (!urlToScan.toLowerCase().startsWith("http://") && !urlToScan.toLowerCase().startsWith("https://")) {
+                urlToScan = "https://" + urlToScan;
+                Log.d(TAG, "Prepended 'https://' to hostname. Full URL to scan: " + urlToScan);
+            }
+            intent.putExtra(ScanResultActivity.EXTRA_URL_TO_SCAN, urlToScan);
         } else {
             // It's some other data, not a URL, not our signed format.
             Log.i(TAG, "Identified as an OTHER type QR code.");
@@ -149,12 +163,8 @@ public class QRScannerActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Check for camera permission before starting preview
-        // This assumes camera permission is requested in MainActivity or similar entry point.
-        // If not, you should add permission request logic here or in MainActivity.
-        // For example: if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+        // This assumes camera permission is requested and granted at an earlier point (e.g., in MainActivity).
         codeScanner.startPreview();
-        // else { request permission }
     }
 
     @Override
@@ -162,31 +172,4 @@ public class QRScannerActivity extends AppCompatActivity {
         codeScanner.releaseResources();
         super.onPause();
     }
-
-    // Optional: Permission handling (if not handled globally)
-    /*
-    private static final int REQUEST_CAMERA_PERMISSION = 101; // Example request code
-    private void checkAndRequestCameraPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
-        } else {
-            codeScanner.startPreview();
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_CAMERA_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Camera permission granted", Toast.LENGTH_SHORT).show();
-                codeScanner.startPreview();
-            } else {
-                Toast.makeText(this, "Camera permission is required to scan QR codes", Toast.LENGTH_LONG).show();
-                finish(); // Or handle more gracefully
-            }
-        }
-    }
-    */
 }
-

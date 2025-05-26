@@ -16,7 +16,7 @@ import com.google.zxing.Result;
 import org.json.JSONObject;
 import org.json.JSONException;
 
-import java.util.regex.Pattern; // For more advanced URL pattern matching
+import java.util.regex.Pattern; // Keep for reference, but regex check will be removed
 
 public class QRScannerActivity extends AppCompatActivity {
     private static final String TAG = "QRScannerActivity"; // Logging Tag
@@ -29,7 +29,9 @@ public class QRScannerActivity extends AppCompatActivity {
     public static final String EXTRA_QR_PAYLOAD_TYPE = "com.example.seqrpay.EXTRA_QR_PAYLOAD_TYPE";
     public static final String PAYLOAD_TYPE_SIGNED_PAYMENT = "SIGNED_PAYMENT";
     public static final String PAYLOAD_TYPE_URL = "URL";
-    public static final String PAYLOAD_TYPE_OTHER = "OTHER";
+    // PAYLOAD_TYPE_OTHER is no longer explicitly used, as all non-signed are treated as URL
+    // public static final String PAYLOAD_TYPE_OTHER = "OTHER";
+
 
     public static final String EXTRA_SIGNED_DATA_BLOCK = "com.example.seqrpay.EXTRA_SIGNED_DATA_BLOCK";
     public static final String EXTRA_SIGNATURE = "com.example.seqrpay.EXTRA_SIGNATURE";
@@ -80,7 +82,9 @@ public class QRScannerActivity extends AppCompatActivity {
             // Optionally show a toast to the user
             // Toast.makeText(this, "Scanned QR code is empty.", Toast.LENGTH_SHORT).show();
             // Restart the preview to allow for another scan.
-            codeScanner.startPreview();
+            if (codeScanner != null) { // Ensure codeScanner is not null
+                codeScanner.startPreview();
+            }
             return;
         }
 
@@ -110,16 +114,16 @@ public class QRScannerActivity extends AppCompatActivity {
                 intent.putExtra(EXTRA_PAYEE_USERNAME, payeeUsername);
                 intent.putExtra(EXTRA_AMOUNT, amount);
                 intent.putExtra(EXTRA_CURRENCY, currency);
-                intent.putExtra(ScanResultActivity.EXTRA_URL_TO_SCAN, (String) null); // No external URL to scan
+                intent.putExtra(ScanResultActivity.EXTRA_URL_TO_SCAN, (String) null); // No external URL to scan for this type
 
             } else {
-                // Not our specific signed format, treat as a potential URL or other data
-                handleNonSignedPayload(intent, qrContent);
+                // Not our specific signed format, treat as a URL by default
+                handleNonSignedPayloadAsUrl(intent, qrContent);
             }
         } catch (JSONException e) {
-            // Not a valid JSON, so it must be a URL or other plain text data.
-            Log.w(TAG, "QR content is not a valid JSON. Treating as potential URL/Other.");
-            handleNonSignedPayload(intent, qrContent);
+            // Not a valid JSON, so it must be treated as a URL.
+            Log.w(TAG, "QR content is not a valid JSON. Treating as URL.");
+            handleNonSignedPayloadAsUrl(intent, qrContent);
         }
 
         startActivity(intent);
@@ -128,35 +132,22 @@ public class QRScannerActivity extends AppCompatActivity {
 
     /**
      * Handles payloads that are not our signed JSON format.
-     * It checks if the content is likely a URL or hostname and prepares the intent accordingly.
+     * It now treats all such payloads as potential URLs.
      * @param intent The intent to be sent to ScanResultActivity.
      * @param qrContent The raw content from the QR code.
      */
-    private void handleNonSignedPayload(Intent intent, String qrContent) {
-        // Improved heuristic to check if the content is likely a URL or hostname.
-        // It must contain at least one dot, have no whitespace, and have a valid top-level domain (e.g., .com, .kz, .pt).
-        // This is a more robust check than just looking for "http".
-        // Pattern.matches looks for a full string match.
-        boolean isLikelyUrl = Pattern.matches("^[a-zA-Z0-9\\-]+(\\.[a-zA-Z0-9\\-]+)+$", qrContent.trim());
+    private void handleNonSignedPayloadAsUrl(Intent intent, String qrContent) {
+        Log.i(TAG, "Treating non-signed QR content as a URL: " + qrContent);
+        intent.putExtra(EXTRA_QR_PAYLOAD_TYPE, PAYLOAD_TYPE_URL);
 
-
-        if (isLikelyUrl) {
-            Log.i(TAG, "Identified as a URL-like QR code: " + qrContent);
-            intent.putExtra(EXTRA_QR_PAYLOAD_TYPE, PAYLOAD_TYPE_URL);
-
-            // Prepare the URL for scanning. Prepend "https://" if no protocol is specified.
-            String urlToScan = qrContent.trim();
-            if (!urlToScan.toLowerCase().startsWith("http://") && !urlToScan.toLowerCase().startsWith("https://")) {
-                urlToScan = "https://" + urlToScan;
-                Log.d(TAG, "Prepended 'https://' to hostname. Full URL to scan: " + urlToScan);
-            }
-            intent.putExtra(ScanResultActivity.EXTRA_URL_TO_SCAN, urlToScan);
-        } else {
-            // It's some other data, not a URL, not our signed format.
-            Log.i(TAG, "Identified as an OTHER type QR code.");
-            intent.putExtra(EXTRA_QR_PAYLOAD_TYPE, PAYLOAD_TYPE_OTHER);
-            intent.putExtra(ScanResultActivity.EXTRA_URL_TO_SCAN, (String) null); // No URL to scan
+        // Prepare the content for scanning as a URL. Prepend "https://" if no protocol is specified.
+        String urlToScan = qrContent.trim();
+        // Check if it starts with http:// or https:// (case-insensitive)
+        if (!urlToScan.toLowerCase().matches("^https?://.*")) {
+            urlToScan = "https://" + urlToScan;
+            Log.d(TAG, "Prepended 'https://' to content. Full string to scan as URL: " + urlToScan);
         }
+        intent.putExtra(ScanResultActivity.EXTRA_URL_TO_SCAN, urlToScan);
     }
 
 
@@ -164,12 +155,16 @@ public class QRScannerActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         // This assumes camera permission is requested and granted at an earlier point (e.g., in MainActivity).
-        codeScanner.startPreview();
+        if (codeScanner != null) { // Ensure codeScanner is not null
+            codeScanner.startPreview();
+        }
     }
 
     @Override
     protected void onPause() {
-        codeScanner.releaseResources();
+        if (codeScanner != null) { // Ensure codeScanner is not null
+            codeScanner.releaseResources();
+        }
         super.onPause();
     }
 }

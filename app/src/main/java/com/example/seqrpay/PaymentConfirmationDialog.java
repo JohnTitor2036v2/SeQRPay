@@ -1,3 +1,4 @@
+// File: PaymentConfirmationDialog.java
 package com.example.seqrpay;
 
 import android.app.Dialog;
@@ -128,9 +129,14 @@ public class PaymentConfirmationDialog extends Dialog {
             details.append("You are about to interact with the following URL:\n");
             details.append(rawPaymentData);
             details.append("\n\n(Security scans were performed on the previous screen.)");
-        } else { // PAYLOAD_TYPE_OTHER or any fallback
-            // For other types, display the raw data.
-            // You could add more specific parsing here if "OTHER" has known sub-formats.
+        }
+        // Since PAYLOAD_TYPE_OTHER is removed from QRScannerActivity,
+        // any non-signed QR will be PAYLOAD_TYPE_URL.
+        // The old 'else' block for PAYLOAD_TYPE_OTHER is no longer strictly necessary
+        // if QRScannerActivity guarantees only SIGNED_PAYMENT or URL.
+        // However, keeping a fallback in the dialog can be robust.
+        else { // Fallback for any unexpected payloadType or if rawPaymentData wasn't handled above
+            Log.w(TAG, "Displaying raw data in dialog for unexpected payload type: " + payloadType);
             details.append("Confirm action with the following data:\n\n").append(rawPaymentData);
         }
         tvPaymentDetails.setText(details.toString());

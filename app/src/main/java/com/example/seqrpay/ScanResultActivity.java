@@ -1,3 +1,4 @@
+// File: ScanResultActivity.java
 package com.example.seqrpay;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -151,11 +152,11 @@ public class ScanResultActivity extends AppCompatActivity {
                     checkCompletionAndFinalizeUI();
                 }
                 break;
-            case QRScannerActivity.PAYLOAD_TYPE_OTHER:
-            default:
-                updateOverallStatusUI(true, "Scanned Content:", originalPaymentData);
-                detailsText.setText("(No specific security scan performed for this QR type)");
-                proceedAllowed = true; // Example: Allow proceeding for "other" types by default
+            // REMOVED: case QRScannerActivity.PAYLOAD_TYPE_OTHER:
+            default: // Handles any unexpected payload types
+                Log.w(TAG, "Received unknown or unexpected payload type: " + payloadType);
+                updateOverallStatusUI(false, "Error: Unknown QR Content", "This QR code format is not recognized or supported.");
+                proceedAllowed = false; // Do not allow proceeding for unknown types
                 vtScanComplete = true; geminiScanComplete = true; // Mark scans as "done"
                 showLoadingState(false);
                 checkCompletionAndFinalizeUI();
@@ -216,8 +217,8 @@ public class ScanResultActivity extends AppCompatActivity {
         String currency = intent.getStringExtra(QRScannerActivity.EXTRA_CURRENCY);
 
         String paymentInfo = "Payee: " + (payeeUsername != null ? payeeUsername : "N/A") +
-                             "\nAmount: " + (amount != null ? amount : "N/A") +
-                             " " + (currency != null ? currency : "");
+                "\nAmount: " + (amount != null ? amount : "N/A") +
+                " " + (currency != null ? currency : "");
         tvPaymentInfoText.setText(paymentInfo);
 
         if (signedDataBlockStr == null || signatureBase64 == null || payeeUsername == null) {
@@ -229,7 +230,7 @@ public class ScanResultActivity extends AppCompatActivity {
         } else {
             try {
                 JSONObject dataToSignJson = new JSONObject(signedDataBlockStr);
-                String canonicalDataToSign = createCanonicalString(dataToSignJson);
+                String canonicalDataToSign = createCanonicalString(dataToSignJson); // Use the same method as in GenerateQrActivity
 
                 if (canonicalDataToSign == null) {
                     throw new Exception("Failed to create canonical string for verification.");
@@ -320,7 +321,7 @@ public class ScanResultActivity extends AppCompatActivity {
                 try {
                     geminiResponseText = result.getText();
                     if (geminiResponseText == null || geminiResponseText.isEmpty()) {
-                         geminiResponseText = getString(R.string.gemini_rating_error) + " (Empty Response)";
+                        geminiResponseText = getString(R.string.gemini_rating_error) + " (Empty Response)";
                     }
                     Log.d(TAG, "Gemini Result: " + geminiResponseText);
                 } catch (Exception e) { // Catch any exception during text extraction
@@ -384,7 +385,7 @@ public class ScanResultActivity extends AppCompatActivity {
                 return; // Not all scans are done yet for URL type
             }
         }
-        // For SIGNED_PAYMENT or OTHER, vtScanComplete and geminiScanComplete were set to true earlier.
+        // For SIGNED_PAYMENT, vtScanComplete and geminiScanComplete were set to true earlier.
 
         showLoadingState(false); // Hide progress bar, show result layout
         Log.d(TAG, "All relevant processes complete. Finalizing UI for payload type: " + payloadType);
@@ -398,12 +399,9 @@ public class ScanResultActivity extends AppCompatActivity {
                 // Optionally show a non-blocking warning if VT is safe but Gemini is negative
                 Toast.makeText(this, "Note: URL scan clear, but AI suggests caution.", Toast.LENGTH_LONG).show();
             }
-        } else if (QRScannerActivity.PAYLOAD_TYPE_OTHER.equals(payloadType)) {
-            // Policy for "OTHER" type was already set (e.g., proceedAllowed = true)
-            // updateOverallStatusUI was already called in the main switch-case.
-        } else {
-            proceedAllowed = false; // Default for unknown or error states not caught earlier
         }
+        // The 'default' case in the main switch handles unknown types by setting proceedAllowed = false.
+        // No need for an explicit 'else if PAYLOAD_TYPE_OTHER' here as it's covered by default.
 
         // Set visibility of the proceed button
         proceedButton.setVisibility(proceedAllowed ? View.VISIBLE : View.GONE);
@@ -411,17 +409,17 @@ public class ScanResultActivity extends AppCompatActivity {
 
     private boolean isGeminiRatingPositive(String geminiResult) {
         if (geminiResult == null || geminiResult.isEmpty() ||
-            geminiResult.startsWith(getString(R.string.gemini_rating_error)) ||
-            geminiResult.equals(getString(R.string.gemini_rating_loading))) {
+                geminiResult.startsWith(getString(R.string.gemini_rating_error)) ||
+                geminiResult.equals(getString(R.string.gemini_rating_loading))) {
             return true; // Default to positive (or neutral) if error, loading, or no meaningful response
         }
         String lowerResult = geminiResult.toLowerCase();
         // Look for negative keywords - refine this based on typical responses
         return !lowerResult.contains("malicious") &&
-               !lowerResult.contains("risky") &&
-               !lowerResult.contains("unsafe") &&
-               !lowerResult.contains("warning") &&
-               !lowerResult.contains("caution");
+                !lowerResult.contains("risky") &&
+                !lowerResult.contains("unsafe") &&
+                !lowerResult.contains("warning") &&
+                !lowerResult.contains("caution");
     }
 
     private void proceedToPayment() {

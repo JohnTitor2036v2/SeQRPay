@@ -309,7 +309,7 @@ public class ScanResultActivity extends AppCompatActivity {
         geminiRatingText.setText(R.string.gemini_rating_loading);
 
         Content prompt = new Content.Builder()
-                .addText("Analyze the trustworthiness of this URL for a secure payment app user. Is it safe, potentially risky, or malicious? Provide a very brief explanation (1-2 sentences max). URL: " + url)
+                .addText("Analyze the trustworthiness of this URL for a secure payment app user. Is it safe, potentially risky, or malicious? Here is an example of a safe Kaspi QR Payment link: https://pay.kaspi.kz/pay/zdf7v35x Provide a very brief explanation (1-2 sentences max). URL: " + url)
                 .build();
         Executor backgroundExecutor = appExecutors.diskIO(); // Use your AppExecutors
         ListenableFuture<GenerateContentResponse> future = geminiModel.generateContent(prompt);
